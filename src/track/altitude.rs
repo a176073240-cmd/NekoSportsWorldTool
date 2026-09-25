@@ -36,19 +36,12 @@ pub fn parse_spec(text: &str) -> Result<Option<AltitudeSpec>, String> {
     Ok(Some(AltitudeSpec::Single(altitude_m)))
 }
 
-/// 解析 UI 的最低海拔和最高海拔输入框。
-///
-/// 两个输入框必须同时为空或同时有值；中间的区间连接符由调用方 UI
-/// 绘制，用户不需要手动输入 min-max。
+/// 解析 UI 中分开的最低、最高海拔输入框。连接符由界面绘制。
 pub fn parse_range_fields(min_text: &str, max_text: &str) -> Result<Option<AltitudeRange>, String> {
     let min_text = min_text.trim();
     let max_text = max_text.trim();
-    if min_text.is_empty() && max_text.is_empty() {
-        return Ok(None);
-    }
-    if min_text.is_empty() || max_text.is_empty() {
-        return Err("最低海拔和最高海拔需要同时填写，或同时留空".into());
-    }
+    if min_text.is_empty() && max_text.is_empty() { return Ok(None); }
+    if min_text.is_empty() || max_text.is_empty() { return Err("最低海拔和最高海拔需要同时填写，或同时留空".into()); }
     let min_m = min_text.parse::<f64>().map_err(|_| "最低海拔必须是数字".to_string())?;
     let max_m = max_text.parse::<f64>().map_err(|_| "最高海拔必须是数字".to_string())?;
     validate_range(min_m, max_m).map(Some)
@@ -140,11 +133,8 @@ mod tests {
     }
 
     #[test]
-    fn parses_separate_range_fields_without_a_user_typed_separator() {
-        assert_eq!(
-            parse_range_fields("1", "13").unwrap(),
-            Some(AltitudeRange { min_m: 1.0, max_m: 13.0 })
-        );
+    fn parses_separate_range_fields_without_typed_separator() {
+        assert_eq!(parse_range_fields("1", "13").unwrap(), Some(AltitudeRange { min_m: 1.0, max_m: 13.0 }));
         assert!(parse_range_fields("1", "").is_err());
         assert!(parse_range_fields("13", "1").is_err());
         assert_eq!(parse_range_fields(" ", " ").unwrap(), None);
