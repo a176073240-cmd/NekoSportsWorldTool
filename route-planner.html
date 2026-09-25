@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101a18">
+  <title>路线手绘规划器</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <style>
+    :root { color-scheme: dark; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; background: #101a18; color: #edf4ed; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; }
+    .shell { display: grid; grid-template-columns: minmax(280px, 360px) 1fr; min-height: 100vh; }
+    aside { padding: 28px 24px; background: #172320; border-right: 1px solid #2a3933; }
+    h1 { margin: 0 0 8px; font-size: 24px; letter-spacing: .02em; }
+    .subtitle { margin: 0 0 24px; color: #a8b9ae; line-height: 1.6; font-size: 14px; }
+    .notice { padding: 12px 14px; margin-bottom: 20px; border: 1px solid #586d48; border-radius: 12px; color: #d4e6b8; background: #263326; font-size: 13px; line-height: 1.55; }
+    label { display: block; margin: 0 0 7px; color: #bdccc1; font-size: 13px; }
+    input { width: 100%; padding: 11px 12px; color: #edf4ed; background: #101a18; border: 1px solid #40534a; border-radius: 9px; font: inherit; outline: none; }
+    input:focus { border-color: #a5d48d; }
+    .search { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 18px; }
+    button, .file-label { min-height: 40px; padding: 9px 13px; border: 1px solid #52645a; border-radius: 9px; color: #edf4ed; background: #26352e; font: inherit; font-size: 13px; cursor: pointer; }
+    button:hover, .file-label:hover { background: #33463b; }
+    button.primary { color: #132016; background: #a5d48d; border-color: #a5d48d; font-weight: 700; }
+    button.primary:hover { background: #b9e3a4; }
+    .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 15px 0; }
+    .file-label { display: flex; align-items: center; justify-content: center; }
+    .file-label input { display: none; }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 20px 0; }
+    .stat { padding: 13px; border-radius: 11px; background: #202e29; }
+    .stat span { display: block; color: #a8b9ae; font-size: 12px; }
+    .stat strong { display: block; margin-top: 4px; font-size: 20px; font-variant-numeric: tabular-nums; }
+    .list-head { display: flex; justify-content: space-between; align-items: baseline; margin: 20px 0 8px; }
+    .list-head strong { font-size: 14px; }
+    .list-head span, .hint { color: #a8b9ae; font-size: 12px; }
+    #points { max-height: 28vh; overflow: auto; padding: 0; margin: 0; list-style: none; }
+    #points li { display: flex; justify-content: space-between; gap: 8px; padding: 8px 2px; border-bottom: 1px solid #2a3933; font-size: 12px; font-variant-numeric: tabular-nums; }
+    #points li span { color: #b9c9bf; }
+    .hint { margin-top: 14px; line-height: 1.6; }
+    main { min-width: 0; min-height: 100vh; }
+    #map { width: 100%; height: 100vh; min-height: 520px; background: #d7dfd6; }
+    .leaflet-container { font-family: inherit; }
+    .point-icon { display: grid; place-items: center; width: 26px; height: 26px; border: 2px solid white; border-radius: 50%; background: #47834d; color: white; box-shadow: 0 1px 5px #0008; font-size: 11px; font-weight: 700; }
+    @media (max-width: 760px) {
+      .shell { grid-template-columns: 1fr; }
+      aside { padding: 20px 18px; border-right: 0; border-bottom: 1px solid #2a3933; }
+      #map { height: 62vh; min-height: 390px; }
+      main { min-height: 62vh; }
+      #points { max-height: 160px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <h1>路线手绘规划器</h1>
+      <p class="subtitle">在地图上依次点击，规划路线；也可以导入真实 GPX 检查点序和时间。</p>
+      <div class="notice">独立的 GPX 预览工具。导入点按 WGS84 读取，不做坐标偏移、平滑或跨段连线；文件不会发送到运动平台。</div>
+      <label for="place">定位地图中心</label>
+      <div class="search">
+        <input id="place" autocomplete="off" placeholder="地点名称或 纬度, 经度">
+        <button id="search">定位</button>
+      </div>
+      <div class="stats">
+        <div class="stat"><span>路线长度</span><strong id="distance">0 m</strong></div>
+        <div class="stat"><span>路线点数</span><strong id="count">0</strong></div>
+      </div>
+      <div class="actions">
+        <button id="undo">撤销上一点</button>
+        <button id="clear">清空路线</button>
+        <label class="file-label">导入 GPX<input id="import" type="file" accept=".gpx,application/gpx+xml,application/xml,text/xml"></label>
+        <button class="primary" id="export">导出 GPX</button>
+      </div>
+      <div class="list-head"><strong>途经点</strong><span>点击地图添加</span></div>
+      <ol id="points"></ol>
+      <p class="hint">地图数据 © OpenStreetMap 贡献者。地图底图和地点搜索需要联网。GPX 预览不代表平台详情地图或平台认可路线；开始活动前请确认路线可通行并遵守当地规则。</p>
+    </aside>
+    <main><div id="map" aria-label="路线地图"></div></main>
+  </div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="./route-planner-gpx.js"></script>
+  <script>
+    (() => {
+      "use strict";
+      let points = [];
+      let segments = [{ kind: "manual", points }];
+      const map = L.map("map").setView([31.2304, 121.4737], 13);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      }).addTo(map);
+      const lineLayers = L.layerGroup().addTo(map);
+      const lineStyle = { color: "#347b48", weight: 5, opacity: 0.9, smoothFactor: 0 };
+      const markers = L.layerGroup().addTo(map);
+      const $ = (id) => document.getElementById(id);
+      const distanceEl = $("distance");
+      const countEl = $("count");
+      const listEl = $("points");
+      const fmtCoord = (n) => n.toFixed(6);
+      const distanceText = (meters) => meters < 1000 ? `${Math.round(meters)} m` : `${(meters / 1000).toFixed(2)} km`;
+
+      function refresh() {
+        const displaySegments = RoutePlannerGpx.prepareDisplaySegments(segments);
+        lineLayers.clearLayers();
+        markers.clearLayers();
+        const allPoints = [];
+        let meters = 0;
+        let globalIndex = 0;
+        for (const [segmentIndex, segment] of displaySegments.entries()) {
+          const latLngs = segment.points.map((point) => L.latLng(point.lat, point.lng));
+          allPoints.push(...latLngs);
+          if (latLngs.length >= 2) L.polyline(latLngs, lineStyle).addTo(lineLayers);
+          for (let i = 1; i < latLngs.length; i++) meters += map.distance(latLngs[i - 1], latLngs[i]);
+          latLngs.forEach((point, pointIndex) => {
+            const index = ++globalIndex;
+            const icon = L.divIcon({ className: "", html: `<span class="point-icon">${index}</span>`, iconSize: [26, 26], iconAnchor: [13, 13] });
+            L.marker(point, { icon }).addTo(markers).bindTooltip(`轨迹段 ${segmentIndex + 1} · 点 ${pointIndex + 1}`);
+          });
+        }
+        distanceEl.textContent = distanceText(meters);
+        countEl.textContent = String(globalIndex);
+        listEl.replaceChildren(...displaySegments.flatMap((segment, segmentIndex) => segment.points.map((point, pointIndex) => {
+          const item = document.createElement("li");
+          const number = document.createElement("b");
+          const coordinate = document.createElement("span");
+          number.textContent = `#${segmentIndex + 1}.${pointIndex + 1}`;
+          coordinate.textContent = `${fmtCoord(point.lat)}, ${fmtCoord(point.lng)}${point.timeRaw ? ` · ${point.timeRaw}` : ""}`;
+          item.append(number, coordinate);
+          return item;
+        })));
+        return allPoints;
+      }
+      function addPoint(lat, lng) {
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return;
+        if (segments.length !== 1 || segments[0].kind !== "manual") {
+          points = [];
+          segments = [{ kind: "manual", points }];
+        }
+        points.push(L.latLng(lat, lng));
+        refresh();
+      }
+      map.on("click", (event) => addPoint(event.latlng.lat, event.latlng.lng));
+      $("undo").addEventListener("click", () => {
+        if (segments.length === 1 && segments[0].kind === "manual") points.pop();
+        refresh();
+      });
+      $("clear").addEventListener("click", () => {
+        points = [];
+        segments = [{ kind: "manual", points }];
+        refresh();
+      });
+      $("search").addEventListener("click", async () => {
+        const query = $("place").value.trim();
+        if (!query) return;
+        const coords = query.split(/[\s,]+/).map(Number);
+        if (coords.length === 2 && coords.every(Number.isFinite) && Math.abs(coords[0]) <= 90 && Math.abs(coords[1]) <= 180) {
+          map.setView(coords, 16);
+          return;
+        }
+        const button = $("search");
+        button.disabled = true;
+        try {
+          const url = new URL("https://nominatim.openstreetmap.org/search");
+          url.search = new URLSearchParams({ q: query, format: "jsonv2", limit: "1" });
+          const response = await fetch(url);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const results = await response.json();
+          if (!results.length) throw new Error("没有找到这个地点");
+          map.setView([Number(results[0].lat), Number(results[0].lon)], 16);
+        } catch (error) {
+          window.alert(`定位失败：${error.message}`);
+        } finally {
+          button.disabled = false;
+        }
+      });
+      $("place").addEventListener("keydown", (event) => { if (event.key === "Enter") $("search").click(); });
+
+      $("export").addEventListener("click", () => {
+        const allPoints = refresh();
+        if (allPoints.length < 2) { window.alert("请至少添加两个途经点后再导出。"); return; }
+        const gpx = RoutePlannerGpx.serializeSegments(segments);
+        const blob = new Blob([gpx], { type: "application/gpx+xml;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "planned-route.gpx";
+        link.click();
+        URL.revokeObjectURL(url);
+      });
+
+      $("import").addEventListener("change", async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        try {
+          const imported = RoutePlannerGpx.parseText(await file.text());
+          segments = imported.segments;
+          points = [];
+          const allPoints = refresh();
+          map.fitBounds(L.latLngBounds(allPoints), { padding: [32, 32] });
+        } catch (error) {
+          window.alert(`导入失败：${error.message}`);
+        } finally {
+          event.target.value = "";
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
